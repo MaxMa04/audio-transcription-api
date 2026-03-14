@@ -9,14 +9,33 @@ services:
     ports:
       - "${PORT:-8000}:8000"
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
 
   ollama:
     image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+    command:
+      - /bin/sh
+      - -c
+      - |
+        ollama serve &
+        server_pid=$$!
+        sleep 5
+        ollama pull ${OLLAMA_MODEL:-whisper}
+        wait $$server_pid
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
 volumes:
   ollama-data:
