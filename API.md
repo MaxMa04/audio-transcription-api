@@ -96,6 +96,25 @@ response = requests.post(
 print(response.json())
 ```
 
+**Beispiel mit C# (HttpClient)**
+```csharp
+using System.Net.Http;
+using System.Net.Http.Headers;
+
+var audioBytes = await File.ReadAllBytesAsync("aufnahme.wav");
+
+using var client = new HttpClient();
+client.DefaultRequestHeaders.Add("X-API-Key", "fuso-transcribe-2025");
+
+var content = new ByteArrayContent(audioBytes);
+content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+var response = await client.PostAsync("http://192.168.57.6:8100/v1/transcriptions", content);
+var json = await response.Content.ReadAsStringAsync();
+
+Console.WriteLine(json);
+```
+
 **Beispiel mit JavaScript (fetch)**
 ```javascript
 const fs = require("fs");
