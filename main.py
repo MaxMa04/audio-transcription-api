@@ -16,8 +16,8 @@ from providers.ollama import (
     OllamaProviderBadResponse,
     OllamaProviderError,
     OllamaProviderTimeout,
-    OllamaWhisperProvider,
 )
+from providers.whisper_local import WhisperLocalProvider
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -30,8 +30,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     port: int = 8000
     api_keys: str = "changeme"
-    ollama_base_url: str = "http://ollama:11434"
-    ollama_model: str = "whisper"
+    whisper_model_size: str = "large-v3"
+    whisper_device: str = "cuda"
+    whisper_compute_type: str = "float16"
     max_audio_size_mb: int = 10
     request_timeout_seconds: float = 30.0
 
@@ -48,11 +49,18 @@ settings = Settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.settings = settings
-    app.state.ollama_provider = OllamaWhisperProvider(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        timeout_seconds=settings.request_timeout_seconds,
+    logger.info(
+        "Loading Whisper model=%s device=%s compute=%s",
+        settings.whisper_model_size,
+        settings.whisper_device,
+        settings.whisper_compute_type,
     )
+    app.state.provider = WhisperLocalProvider(
+        model_size=settings.whisper_model_size,
+        device=settings.whisper_device,
+        compute_type=settings.whisper_compute_type,
+    )
+    logger.info("Whisper model loaded successfully")
     yield
 
 
@@ -89,8 +97,8 @@ def truncate_transcript(text: str, max_words: int = MAX_TRANSCRIPT_WORDS) -> str
     return " ".join(words[:max_words])
 
 
-def get_provider(request: Request) -> OllamaWhisperProvider:
-    return request.app.state.ollama_provider
+def get_provider(request: Request) -> WhisperLocalProvider:
+    return request.app.state.provider
 
 
 async def require_api_key(
@@ -177,7 +185,7 @@ async def ollama_error_handler(
 
 @app.get("/v1/health", response_model=HealthResponse, tags=["health"])
 async def healthcheck() -> HealthResponse:
-    provider = app.state.ollama_provider
+    provider = app.state.provider
     await provider.healthcheck()
     return HealthResponse(status="ok")
 
@@ -209,7 +217,7 @@ async def healthcheck() -> HealthResponse:
 async def create_transcription(
     request: Request,
     _: Annotated[None, Depends(require_api_key)],
-    provider: Annotated[OllamaWhisperProvider, Depends(get_provider)],
+    provider: Annotated[WhisperLocalProvider, Depends(get_provider)],
 ) -> TranscriptionResponse:
     request_id = get_request_id(request)
     content_type = request.headers.get("content-type", "")
